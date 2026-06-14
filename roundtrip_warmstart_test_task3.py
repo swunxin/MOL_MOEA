@@ -13,8 +13,9 @@ Round-trip fidelity test —— Task3 (QED + DRD2 + similarity) warm-start good 
   seq_to_emb / decode_with_validity_fallback / QED.qed / tanimoto_similarity / drd2_oracle(TDC)
 
 用法(服务器, 激活 xin38, 项目根):
-  python roundtrip_warmstart_test_task3.py --mol-id-range 0,199 --out outputs/roundtrip_warmstart_task3.csv
-  # 默认 lead/oripops 指向同级 ../MOMO-master-main/momo/data/ ; 可用 --leads-csv/--warmstart-csv 覆盖
+  python roundtrip_warmstart_test_task3.py --out outputs/roundtrip_warmstart_task3.csv
+  # 默认: lead=../MOMO-master-main/momo/data/qeddrd_test.csv ; oripops=两个 QMO_qeddrd 文件(0-199 + 200-699)拼接, 共 0-699
+  # 可用 --leads-csv / --warmstart-csv(逗号分隔多文件) 覆盖
   # 期望: SANITY 三项误差≈0, rt_pass 高 => 热启好点对齐 + 往返无损 => 注入后能被 BANK 保住
 """
 import argparse
@@ -54,12 +55,13 @@ def _drd2(smi):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--warmstart-csv',
-                    default='../MOMO-master-main/momo/data/oripops_qeddrd/QMO_qeddrd_mol200_optsmiles.csv',
-                    help='QMO_qeddrd_mol200_optsmiles.csv (SMILES,mol_id,qed,sim,drd)')
+                    default='../MOMO-master-main/momo/data/oripops_qeddrd/QMO_qeddrd_mol200_optsmiles.csv,'
+                            '../MOMO-master-main/momo/data/oripops_qeddrd/QMO_qeddrd_mol200700_optsmiles.csv',
+                    help='QMO_qeddrd oripops（逗号分隔多个文件，会拼接；mol_id 0-699，列 SMILES,mol_id,qed,sim,drd）')
     ap.add_argument('--leads-csv',
                     default='../MOMO-master-main/momo/data/qeddrd_test.csv',
                     help='qeddrd_test.csv（有表头；脚本会跳 SMILES 表头）')
-    ap.add_argument('--mol-id-range', default='0,199', help='0-based inclusive')
+    ap.add_argument('--mol-id-range', default='0,699', help='0-based inclusive (两个oripops合起来覆盖0-699)')
     ap.add_argument('--tre-qed', type=float, default=0.8)
     ap.add_argument('--tre-drd', type=float, default=0.3)
     ap.add_argument('--tre-sim', type=float, default=0.4)
@@ -80,7 +82,9 @@ def main():
     leads = load_leads_task3(args.leads_csv)
     print(f"leads(qeddrd 去表头) = {len(leads)}", flush=True)
 
-    w = pd.read_csv(args.warmstart_csv)
+    ws_paths = [p.strip() for p in args.warmstart_csv.split(',') if p.strip()]
+    w = pd.concat([pd.read_csv(p) for p in ws_paths], ignore_index=True)
+    print(f"oripops 文件 {len(ws_paths)} 个, 合并 {len(w)} 行, mol_id {w.mol_id.min()}..{w.mol_id.max()}", flush=True)
     for c in ('qed', 'sim', 'drd'):
         w[c] = pd.to_numeric(w[c], errors='coerce')
     good = w[(w.mol_id >= lo) & (w.mol_id <= hi) &
