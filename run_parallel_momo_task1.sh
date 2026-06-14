@@ -15,7 +15,9 @@
 set -euo pipefail
 
 # ======================== 唯一需要改的配置 ========================
-ALGO="FRCSO_N100"                 # PlatEMO 算法名（对应 Algorithms/ 下的目录名）
+ALGO="MOL_MOEA_v10_bank"          # PlatEMO 算法名（对应 Algorithms/ 下的目录名）
+                                  #   切回基线对比就改成 FRCSO_N100
+                                  #   注意：MOL_MOEA 的 task=1 由 no_gui_task1_momo.m 自动补（见该文件 platemo 调用处）
 TOTAL_LEADS=200                   # 总 lead 数
 WORKERS=4                         # 并行 worker 数
 # =================================================================

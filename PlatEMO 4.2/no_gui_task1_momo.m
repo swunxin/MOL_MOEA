@@ -201,7 +201,19 @@ function start_run(alg, lead_start, lead_end, base_seed, matlab_location, source
         platemo_sparse_save_interval = 10;
         global momo_current_lead_idx;
         momo_current_lead_idx = i;
-        platemo('algorithm',alg,'problem',@DDProblem1,'maxFE',25000,'save',26);
+        % --- MOL_MOEA 必须传参数 cell（尤其 task=1）：否则 ParameterSet 全取默认
+        %     => task=0 => objThr=[] => POP_BANK 输出合并关闭 => 退化为纯 v7
+        %     => 热启的达标分子丢了就丢（这正是 SR 只有 44% 的根因）。
+        %     非 MOL_MOEA 算法（FRCSO/PEATSD/...）不吃这些参数，仍用裸句柄。 ---
+        alg_arg = alg;
+        this_alg_name = func2str(alg);
+        if startsWith(this_alg_name, 'MOL_MOEA')
+            inj = double(contains(this_alg_name, '_inj'));   % bank=0 / bank_inj=1 (L2 注入)
+            % ParameterSet 顺序：D,tau0,H,entropyBonus,learnRate,bankOn,mergeOut,
+            %                    injectOn,inject_max,r_frac,K_max,task  （D=[] 保留默认）
+            alg_arg = {alg, [],0.7,5,0,0.01, 1,1,inj,5,0.1,30, 1};
+        end
+        platemo('algorithm',alg_arg,'problem',@DDProblem1,'maxFE',25000,'save',26);
 
         % Record mol_id -> .mat file mapping for this lead
         alg_name = func2str(alg);
