@@ -1,0 +1,44 @@
+# ===== 模型权重 / checkpoint =====
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+*.pkl
+*.pickle
+*.npy
+*.npz
+
+# ===== 大数据集（体积过大，不入库）=====
+allmolgen_198max_SMILES_SELFIES_tokenlen.csv
+
+# ===== outputs/：默认忽略，但放行运算结果 csv；notebook 检查点仍排除 =====
+outputs/**
+!outputs/**/
+!outputs/**/*.csv
+outputs/**/.ipynb_checkpoints/
+
+# ===== PlatEMO 4.2/：整体不入库，仅放行 metrics 下的结果 csv =====
+PlatEMO 4.2/**
+!PlatEMO 4.2/Data/
+!PlatEMO 4.2/Data/FRCSO_N100/
+!PlatEMO 4.2/Data/FRCSO_N100/metrics/
+!PlatEMO 4.2/Data/FRCSO_N100/metrics/*.csv
+PlatEMO 4.2/Data/FRCSO_N100/metrics/final_population_decs_*.csv
+
+# ===== 其它训练产物 / 第三方大工具（留服务器）=====
+runs/
+QuickVinaTwoGPU/
+
+# ===== 缓存 / 垃圾 =====
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+.pytest_cache/
+*.egg-info/
+oracle_bad_backup/
+
+# ===== 系统 =====
+.DS_Store
+._*
