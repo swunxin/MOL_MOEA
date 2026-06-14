@@ -259,6 +259,9 @@ SIGMA_MODE = os.getenv('SIGMA_MODE', 'z0_std').strip().lower()
 
 # MOMO 数据集（用于回退随机初始化/或选 lead 列表），优先用绝对路径，其次用相对路径
 momo_qed_dataset_candidates = [
+    # 项目内对齐后的 Task1 lead（qed_test 删第1行；见 momo_data/README.md）。仅作回退随机初始化用。
+    str((Path(__file__).resolve().parent / 'momo_data' / 'task1_leads.csv').as_posix()),
+    'momo_data/task1_leads.csv',
     '/root/autodl-tmp/model_combine/MOMO-master-main/momo/data/qed_test.csv',
     str((Path(__file__).resolve().parent.parent / 'MOMO-master-main' / 'momo' / 'data' / 'qed_test.csv').as_posix()),
 ]
@@ -279,10 +282,10 @@ momo_plogp_oripops_candidates = [
 
 # MOMO Task1 warm-start initial populations (per-lead optsmiles)
 momo_qed_oripops_candidates = [
-    str((Path(__file__).resolve().parent / 'data' / 'task1_zinc_qed06_08_top200' / 'QMO_qed_mol200_optsmiles.csv').as_posix()),
-    'data/task1_zinc_qed06_08_top200/QMO_qed_mol200_optsmiles.csv',
-    '/root/autodl-tmp/model_combine/MOMO-master-main/momo/data/oripops_qed/QMO_qed_mol800_optsmiles.csv',
-    str((Path(__file__).resolve().parent.parent / 'MOMO-master-main' / 'momo' / 'data' / 'oripops_qed' / 'QMO_qed_mol800_optsmiles.csv').as_posix()),
+    # 项目内 Task1 oripops（= QMO_qed_mol800，内容不变；对齐靠 momo_data/task1_leads.csv 删第1行）。
+    # 设为唯一来源，去掉旧的 mol200/top200 候选以消除 mol200-vs-mol800 的歧义。
+    str((Path(__file__).resolve().parent / 'momo_data' / 'task1_oripops.csv').as_posix()),
+    'momo_data/task1_oripops.csv',
 ]
 
 admet_model_path = 'MTL-BERT_model.pt'

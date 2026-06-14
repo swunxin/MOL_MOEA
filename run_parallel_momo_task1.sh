@@ -82,7 +82,7 @@ for i in $(seq 0 $(( WORKERS - 1 ))); do
     # 2. 启动 MATLAB
     PLATEMO_COMM_DIR="${COMM_DIR}" \
     PLATEMO_ALGORITHM="${ALGO}" \
-    TASK1_LEAD_FILE="/root/autodl-tmp/model_combine/MOMO-master-main/momo/data/qed_test.csv" \
+    TASK1_LEAD_FILE="${PROJECT_DIR}/momo_data/task1_leads.csv" \
     matlab -nodesktop -nosplash -r \
         "comm_dir_override='${COMM_DIR}'; lead_start=${LEAD_START}; lead_end=${LEAD_END}; run('${PLATEMO_SRC}/no_gui_task1_momo.m'); exit" \
         > "${OUT_DIR}/matlab_w${i}.log" 2>&1 &
