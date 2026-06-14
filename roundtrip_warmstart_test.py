@@ -135,8 +135,18 @@ def main():
         print(f"  未通过的 {len(fail)} 个里: QED<{TQ} 的 {qed_break} ; sim<{TS} 的 {sim_break}")
     print("=" * 64)
     print(f"saved: {args.out}")
-    print("\n判读：rt_pass 很低 => 往返损失实锤，好点在搜索空间里就不达标，BANK/保存无能为力，")
-    print("      主线得转向 ① 提升解码保真 / ② 让目标值不依赖往返(直接用注入分子的真值)。")
+    rt_rate = df.rt_pass.mean() if n else 0.0
+    sim_err = float(np.median((df.sim_orig - df.sim_csv).abs())) if n else 0.0
+    print("\n---------------- 判读 ----------------")
+    if sim_err > 0.05:
+        print(f"[!] SANITY sim 误差={sim_err:.3f} 偏大 => lead 配对/对齐有问题,先修对齐,下面的 rt_pass 不可信。")
+    elif rt_rate >= 0.8:
+        print(f"rt_pass={rt_rate*100:.0f}% 高 => 往返基本无损,热启好点在搜索空间里仍达标。")
+        print("    => 不是往返损失;若实跑 SR 仍低,病根在 注入对齐 / 选择保留 / 生成,另查。")
+    else:
+        print(f"rt_pass={rt_rate*100:.0f}% 低 => 往返把好点改坏了,搜索空间里不达标,BANK/保存救不了。")
+        print("    => 主线转向 ① 提升解码保真 / ② 目标值不依赖往返。")
+    print("=" * 38)
 
 
 if __name__ == '__main__':
