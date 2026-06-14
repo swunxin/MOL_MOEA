@@ -1,4 +1,8 @@
-# ===== 模型权重 / checkpoint =====
+# ============================================================
+# 原则：整个项目的代码全部入库，只排除大体积文件
+# ============================================================
+
+# --- 模型权重 / 大型二进制数据（任意位置都不入库）---
 *.pt
 *.pth
 *.ckpt
@@ -8,37 +12,39 @@
 *.pickle
 *.npy
 *.npz
+*.h5
+*.onnx
+*.mat
 
-# ===== 大数据集（体积过大，不入库）=====
+# --- 特定超大数据文件 ---
 allmolgen_198max_SMILES_SELFIES_tokenlen.csv
-
-# ===== outputs/：默认忽略，但放行运算结果 csv；notebook 检查点仍排除 =====
-outputs/**
-!outputs/**/
-!outputs/**/*.csv
-outputs/**/.ipynb_checkpoints/
-
-# ===== PlatEMO 4.2/：整体不入库，仅放行 metrics 下的结果 csv =====
-PlatEMO 4.2/**
-!PlatEMO 4.2/Data/
-!PlatEMO 4.2/Data/FRCSO_N100/
-!PlatEMO 4.2/Data/FRCSO_N100/metrics/
-!PlatEMO 4.2/Data/FRCSO_N100/metrics/*.csv
 PlatEMO 4.2/Data/FRCSO_N100/metrics/final_population_decs_*.csv
 
-# ===== 其它训练产物 / 第三方大工具（留服务器）=====
+# --- 纯日志 / checkpoint 目录（无代码，3.2G）---
 runs/
-QuickVinaTwoGPU/
 
-# ===== 缓存 / 垃圾 =====
+# --- notebook 自动存档副本（垃圾）---
+.ipynb_checkpoints/
+
+# --- 编译产物 / 二进制（非源码）---
+# 注：.pdb 既可能是 VC++ 调试符号、也可能是蛋白质结构文件，
+#     故只排除 QuickVinaTwoGPU/ 下的 .pdb，避免误伤将来的蛋白质 .pdb
+*.obj
+*.ilk
+*.idb
+*.tlog
+*.log
+*.exe
+*.dll
+*.so
+*.o
+QuickVinaTwoGPU/**/*.pdb
+
+# --- 缓存 / 系统 ---
 __pycache__/
 *.pyc
 *.pyo
-.ipynb_checkpoints/
 .pytest_cache/
 *.egg-info/
-oracle_bad_backup/
-
-# ===== 系统 =====
 .DS_Store
 ._*

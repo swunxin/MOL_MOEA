@@ -1,0 +1,172 @@
+classdef A2C < ALGORITHM
+    methods
+        function main(Algorithm,Problem)
+            %% Generate random population
+            %% 初始化SOM
+
+            % D 是每个维度上神经元的数量，tau0 是初始学习率，H 是邻域交配池的大小
+            [D,tau0,H] = Algorithm.ParameterSet(repmat(ceil(Problem.N.^(1/(Problem.M-1))),1,Problem.M-1),0.7,5);
+            % 根据 D 向量更新种群个体数量
+            Problem.N  = prod(D);            
+            %FrontNo    = NDSort(Population.objs,inf); 简化版本中没有用到Sel_B，单个个体更新种群的方法
+            %% 初始化CSO 
+            % 生成N个在M维空间中均匀分布的参考点，存储在变量V中
+            [V,Problem.N] = UniformPoint(Problem.N,Problem.M);
+            Population    = Problem.Initialization();
+
+            % 计算并设置初始的邻域半径sigma0
+            sigma0     = sqrt(sum(D.^2)/(Problem.M-1))/2;
+            % 将种群的决策变量作为训练集 S
+            S = Population.decs;
+            % 将训练集 S 作为每个神经元的权重向量 W
+            W = S;
+            % 生成一个数组，每个元素是从1到对应D值的序列
+            D = arrayfun(@(S)1:S,D,'UniformOutput',false);
+            % 使用ndgrid函数生成一个多维网格
+            eval(sprintf('[%s]=ndgrid(D{:});',sprintf('c%d,',1:length(D))))
+            % 将多维网格转换为一个矩阵Z
+            eval(sprintf('Z=[%s];',sprintf('c%d(:),',1:length(D))))
+            % 计算潜在空间中每两个神经元之间的距离
+            LDis = pdist2(Z,Z);
+            % 对距离进行排序，并获取每个神经元在潜在空间中的H个最近邻神经元
+            [~,B] = sort(LDis,2);
+            B     = B(:,2:min(H+1,end));
+
+            %% 模块参数
+            % TrainA2C 中多种群进化的次数
+            train_num = 1;   % CSO_SOM_R 训练 1次，通过对比结果调整参数
+            %  A2C 初始权重
+            w_A = 0.5;
+            w_B = 0.5;
+            % 权重学习率
+            Wlr = 0.1;
+            % Initialize counter for Training Gap
+            trainingGapCounter = 0; % 用于记录当前的 Training Gap 次数
+
+            %% Optimization
+            while Algorithm.NotTerminated(Population)
+
+%---------------Caculate weight--------------------------------------------------------%
+                weight_combine = w_combine(w_A, w_B);
+%--------------------------------------------------------------------------------------%
+                % 策略被选中的标识符
+                f_a = 0;
+                f_b = 0;
+                Population_temp = Population; %在单步演化前保留种群，避免种群变少              
+                % 计算种群个体适应度
+                Fitness = calFitness(Population.objs);
+%--------------------------------------------------------------------------------------%
+                % 生成一个0到1之间的随机数
+                randomPro = rand();
+                % 根据生成的随机数选择操作
+                if randomPro < weight_combine
+                    %% CSO
+                    % LMOCSO的环境选择
+                    f_a = 1;
+                    Population    = EnvironmentalSelection(Population,V,(Problem.FE/Problem.maxFE)^2);
+                    if length(Population) >= 2
+                        % 生成从1到种群大小的随机排列的序列，序列的长度是种群大小的一半（向下取整）的两倍（即一定为偶数）
+                        Rank = randperm(length(Population),floor(length(Population)/2)*2);
+                    else
+                        Rank = [1,1];
+                    end
+                    Loser  = Rank(1:end/2);
+                    Winner = Rank(end/2+1:end);
+                    Change = Fitness(Loser) >= Fitness(Winner);
+                    Temp   = Winner(Change);
+                    Winner(Change) = Loser(Change);
+                    Loser(Change)  = Temp;
+                else
+                    %% SOM
+                    f_b = 1;
+                    % SOM初始化
+                    Winner = [];
+                    Loser = [];                  
+                    % Update SOM
+                    %对于训练集中的每个样本
+                    for s = 1 : size(S,1)
+                        % 计算邻域半径 sigma
+                        sigma  = sigma0*(1-(Problem.FE+s)/Problem.maxFE);
+                        % 计算学习率 tau
+                        tau    = tau0*(1-(Problem.FE+s)/Problem.maxFE);
+                        % 找出权重向量 W 中最接近该样本的神经元 u1
+                        [~,u1] = min(pdist2(S(s,:),W));
+                        % 找到在当前邻域半径内的所有神经元
+                        U      = LDis(u1,:) < sigma;
+                        % 更新在邻域内的所有神经元的权重
+                        W(U,:) = W(U,:) + tau.*repmat(exp(-LDis(u1,U))',1,size(W,2)).*(repmat(S(s,:),sum(U),1)-W(U,:));
+                    end
+                    
+                    % Associate each solution with a neuron 将每个解与一个神经元关联
+                    % 生成一个从 1 到 Problem.N 的序列 A
+                    A  = 1 : size(Population, 2);
+                    U  = 1 : size(Population, 2);
+                    % 初始化一个长度为N的零向量  用于存储与神经元u最近的解决方案的索引
+                    XU = zeros(1,size(Population, 2));
+                    % 对于每个解
+                    for i = 1 : size(Population, 2)
+                        % 随机选择一个解决方案
+                        x        = randi(length(A));
+                        % 找出权重向量 W 中最接近该元素的神经元 u
+                        % pdist2(Population(A(x)).dec,W(U,:))计算了当前解决方案与每个未被匹配的神经元之间的欧氏距离
+                        [~,u]    = min(pdist2(Population(A(x)).dec,W(U,:)));
+                        % 将 u 与该元素关联
+                        XU(U(u)) = A(x);
+                        % 从解决方案集中移除该解决方案
+                        A(x)     = [];
+                        % 从神经元集合中移除已找到的神经元
+                        U(u)     = [];
+                    end
+                    for u = 1 : size(Population, 2)
+                        % 从 XU(B(u,:)) 中随机选择一个解
+                        max_nu = size(B, 2);
+                        randomIndex = randi([1,max_nu]);
+                        randomSolution = XU(B(u,randomIndex));
+                        % 将当前解和随机选择的邻域解进行 Fitness 的比较
+                        if Fitness(u) > Fitness(randomSolution)
+                            % 如果当前解的 Fitness 大于随机选择的解，将当前解的序号写入 Winner，将随机选择的解写入 Loser
+                            Winner = [Winner, u];
+                            Loser  = [Loser, randomSolution];
+                        else
+                            % 如果当前解的 Fitness 小于或等于随机选择的解，将当前解的序号写入 Loser，将随机选择的解写入 Winner
+                            Winner = [Winner, randomSolution];
+                            Loser  = [Loser, u];
+                        end
+                    end
+                end % 策略选择终止
+                Offspring      = Operator(Problem,Population(Loser),Population(Winner));
+                Population     = EnvironmentalSelection([Population,Offspring],V,(Problem.FE/Problem.maxFE)^2);
+                Population = Pop_Pool(Population,Population_temp,Problem); % 以新生成的种群PF为主，注意次序
+                
+%---------------TrainA2C-------------------------------------------------------------------%                
+                % 根据策略标识符对其权重w_A,w_B进行学习、处理；这里需比对Population_temp与Population
+                if f_a ==1
+                    r_a = ComparePop(Population_temp, Population); % 种群 B 对 A 的净支配优势：改进率
+                    w_A = w_A +Wlr*r_a;
+                elseif f_b ==1
+                    r_b = ComparePop(Population_temp, Population); % 种群 B 对 A 的净支配优势：改进率
+                    w_B = w_B +Wlr*r_b;
+                end
+%------------------------------------------------------------------------------------------%
+
+            end
+        end
+    end
+end
+
+function Fitness = calFitness(PopObj)
+% Calculate the fitness by shift-based density
+
+    N      = size(PopObj,1);
+    fmax   = max(PopObj,[],1);
+    fmin   = min(PopObj,[],1);
+    PopObj = (PopObj-repmat(fmin,N,1))./repmat(fmax-fmin,N,1);
+    Dis    = inf(N);
+    for i = 1 : N
+        SPopObj = max(PopObj,repmat(PopObj(i,:),N,1));
+        for j = [1:i-1,i+1:N]
+            Dis(i,j) = norm(PopObj(i,:)-SPopObj(j,:));
+        end
+    end
+    Fitness = min(Dis,[],2);
+end
