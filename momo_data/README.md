@@ -1,28 +1,29 @@
-# momo_data —— 内部化 + 对齐后的 MOMO lead / warm-start 数据
+# momo_data —— 内部化 + 对齐后的 Task1 lead / warm-start 数据
 
-> 目的：把原来散在外部 `MOMO-master-main/momo/data/` 的 lead 和 oripops 拷进项目内,
-> 并**修正 lead 与 oripops 的 mol_id 错位**,让代码里现成的 `oripops.mol_id == current_lead_id` 直接对齐。
-
-## 错位根因(已查实)
-MOMO 用 `pd.read_csv(lead).values` 读 lead 文件,**默认把第 1 行当表头吃掉**:
-- `qed_test.csv`(Task1)**无表头** → 误吃掉第 1 个真分子 → QMO `mol_id m` ↔ 原文件第 `m+2` 行。
-- `qeddrd_test.csv`(Task3)**有表头** → 正确吃掉表头 → oripops mol_id 0-based 对齐。
-
-我们的 run 用 MATLAB `readlines` 读 lead(**不丢任何行**)+ `mol_id=行号-1` + `mol_id==current_lead_id` 配 oripops,
-没复现 MOMO 的"吃第 1 行",于是 Task1 整体错位一行(注入的热启全是邻近 lead 的,sim≈0.12,永不达标)。
-
-## 对齐做法(本地已验证 100%)
-**lead 文件删掉第 1 行、取 SMILES 列**,之后 `mol_id==lead_id`(代码现状,无需 -1)即 100% 对齐:
-- `task1_leads.csv` = `qed_test.csv` 删第 1 行(被误吃的真分子),纯 SMILES,799 行。
-- `task3_leads.csv` = `qeddrd_test.csv` 删第 1 行(表头),取 SMILES 列,780 行。
-- 校验:好点(QED/sim 达标)按 `mol_id==lead_id` 配 lead → Task1 622/622、Task3 823/823 对齐(sim 与 oripops CSV 完全一致)。
+> 项目目前**只跑 Task1**(两个 run 脚本都是 `OBJECTIVE_MODE=momo_task1`,无 Task2/3 运行入口)。
+> 所以这里**只放 Task1 实际用到的两个文件**,把原来散在外部 `MOMO-master-main/momo/data/` 的
+> lead 和 oripops 拷进项目内,并**修正 lead 与 oripops 的 mol_id 错位**。
 
 ## 文件
-- `task1_leads.csv` / `task1_oripops.csv`(= QMO_qed_mol800,内容不变,对齐靠 lead 文件) —— **已对齐,可用**
-- `task3_leads.csv` / `task3_oripops.csv`(= QMO_qeddrd_mol200) —— **已对齐,可用**(代码暂未接 Task3)
-- `task2_logp_test_RAW.csv` + `task2_oripops_plogp_RAW/` —— **原样未对齐**;Task2 是空格分隔 lead + oripops 按区间拆成 6 个文件,管线特殊,需单独对齐后再用。
+- `task1_leads.csv` —— lead 列表(纯 SMILES,每行一个,799 行)= `qed_test.csv` **删掉第 1 行**后取 SMILES。
+- `task1_oripops.csv` —— warm-start(SMILES,mol_id,sim,qed)= `QMO_qed_mol800_optsmiles.csv` 原样(内容不变)。
 
-## 代码改了哪
-- `optimizer1.py`:`momo_qed_dataset_candidates` / `momo_qed_oripops_candidates` → 指向本目录(Task1)。匹配逻辑保持 `mol_id==lead_id`(数据已对齐,不再需要 -1)。
-- `run_parallel_momo_task1.sh`:`TASK1_LEAD_FILE` → `momo_data/task1_leads.csv`。
-- Task2/Task3 的代码路径暂未改(Task2 待对齐;Task3 代码未接)。
+## 为什么删第 1 行(错位根因)
+MOMO 用 `pd.read_csv('qed_test.csv').values` 读 lead,**默认把第 1 行当表头吃掉**;而 `qed_test.csv`
+**无表头**,于是误吃掉第 1 个真分子 → QMO `mol_id m` 对应的 lead 其实是 `qed_test` **第 m+2 行**。
+我们的 run 用 MATLAB `readlines` 读 lead(**不丢任何行**)+ `mol_id = 行号-1` + 按 `mol_id == current_lead_id`
+配 oripops,没复现 MOMO 的"吃第 1 行",于是整体**错位一行**:每个 lead 被注入了邻近 lead 的热启分子
+(对当前 lead sim≈0.12,永不达标)—— 这就是 Task1 SR 只有 34.5% 的真因。
+
+**对齐做法**:lead 文件删掉第 1 行后,代码里现成的 `mol_id == current_lead_id` 就 100% 对齐
+(本地验证:622/622 个达标好点的 sim 与 oripops CSV 完全一致),**无需改匹配逻辑、无需 -1**。
+
+## 代码改了哪(均为 Task1)
+- `optimizer1.py`:`momo_qed_dataset_candidates` / `momo_qed_oripops_candidates` → 指向本目录;
+  oripops 候选设为唯一来源(去掉旧的 mol200/top200 候选,消除歧义)。匹配仍 `mol_id == lead_id`。
+- `run_parallel_momo_task1.sh`(实际在用的 run 脚本,驱动 `no_gui_task1_momo.m`):`TASK1_LEAD_FILE` → `momo_data/task1_leads.csv`。
+- 注:`run_parallel.sh` 是另一个较旧的入口(驱动 `no_gui_task1.m`,读法不同),**未改**;若要用它需先确认其 lead 读法再单独对齐。
+
+## 备注
+- Task2/Task3:**当前没有任何运行入口触发**(MATLAB 驱动 `no_gui_task{2,3}_momo.m` 存在但没脚本调用)。
+  故这里不放它们的数据;将来真要跑 Task2/3 时,需各自按其 lead 文件的表头情况单独对齐后再内部化。
