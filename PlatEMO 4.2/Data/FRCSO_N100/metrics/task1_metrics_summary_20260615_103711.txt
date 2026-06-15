@@ -1,0 +1,12 @@
+MOMO Task1 metrics summary
+Generated: 2026-06-15 10:37:12
+DataDir: Data/FRCSO_N100
+Pattern: FRCSO_N100_DDProblem1_M2_D*_*.mat
+Thresholds: QED>=0.900, SIM>=0.400 | HV ref=[0.000, 0.000]
+
+SR (final): 179 / 200 (0.895)
+SR (any)  : 179 / 200 (0.895)
+HV (final): mean=0.868960, std=0.022391 (N=200)
+HV (max)  : mean=0.868960, std=0.022391 (N=200)
+
+Per-run CSV: Data/FRCSO_N100/metrics/task1_metrics_per_run_20260615_103711.csv
