@@ -20,13 +20,16 @@
 set -euo pipefail
 
 # ======================== 配置 ========================
-ALGO="MOL_MOEA_v11_pooltrace"     # 分子版 pooltrace（已在 Algorithms/ 下）
-LEAD="${1:-1}"                    # 要 trace 的 lead 序号（命令行第 1 个参数，默认 1）
+ALGO="${2:-MOL_MOEA_v11_pooltrace2}"   # 算法（命令行第 2 参数，默认 v11_pooltrace2=带 pass=K 达标计数）
+LEAD="${1:-1}"                         # 要 trace 的 lead 序号（命令行第 1 个参数，默认 1）
+#   用法: ./run_single_lead_trace.sh <lead号> [算法名]
+#   例:   ./run_single_lead_trace.sh 12              # trace 第12个lead, 用v11_pooltrace2
+#         ./run_single_lead_trace.sh 5 MOL_MOEA_v11_pooltrace   # 复现旧版(无pass)
 # =====================================================
 
 PROJECT_DIR="/root/autodl-tmp/model_combine/ManyObjectiveDrugDesign"
 PLATEMO_SRC="${PROJECT_DIR}/PlatEMO 4.2"
-OUT_DIR="${PROJECT_DIR}/outputs/momo_task1_trace/single"
+OUT_DIR="${PROJECT_DIR}/outputs/momo_task1_trace/${ALGO}"   # 按算法分目录, 不覆盖旧 trace
 COMM_DIR="${OUT_DIR}/lead${LEAD}"
 
 mkdir -p "${COMM_DIR}"
