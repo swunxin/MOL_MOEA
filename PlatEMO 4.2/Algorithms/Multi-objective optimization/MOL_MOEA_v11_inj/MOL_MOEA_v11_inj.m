@@ -1,7 +1,12 @@
 classdef MOL_MOEA_v11_inj < ALGORITHM
-% MOL_MOEA_v11_inj: == MOL_MOEA_v10_bank（含全部达标保护：阈值候选门 / niche永不丢达标 / pruneClosest保护），
-%   但 L2 注入默认开(injectOn=1)：每代把 BANK 里"离当前(已塌缩)种群>2×间距"的多样好点注回演化、替换最拥挤点
-%   -> 抗塌缩，目标是把"唯一达标分子数"从 v10_bank 的 ~8 提上去（对标 FRCSO ~13.5）。
+% MOL_MOEA_v11_inj: 在 MOL_MOEA_v10_bank 基础上做两处"提多样性"的改动:
+%   (1) updateBank 达标点也纳入 niche 去重: 每个决策 niche 只留 1 个代表(达标优先),
+%       不再让"同质达标点"无上限灌爆 BANK -> BANK 成为"多样达标档案"(而非少数点的复制堆)。
+%       达标覆盖不丢(每个含达标的 niche 都留 1 个达标代表); niche 粒度由 r_frac 控。
+%   (2) injectOn=1 (L2 开): 每代把 BANK 里"离当前(已塌缩)种群>2×间距"的多样好点注回演化、
+%       替换最拥挤点 -> 抗塌缩。
+%   目标: 把"唯一达标分子数"从 v10_bank 的 ~8 提向 FRCSO 的 ~13.5。
+%   LSMOP(objThr=[]) 行为不变(达标逻辑不触发, 仍 == v7)。
 % MOL_MOEA_v10_bank: v7 controller (UNCHANGED) + POP_BANK (dual-space lead archive).
 %
 %   Built ON v7 (NOT v9). The v7 evolution (controller / env-selection / Pop_Pool)
@@ -434,15 +439,22 @@ function BANK = updateBank(BANK, Cand, r_frac, K_max, objThr)
         d    = sqrt(sum((Bn - cn).^2, 2));         % decision distance to each rep
         r    = r_frac * sqrt(size(Bdec,2));        % niche radius in normalised space
         [dmin, j] = min(d);
-        if dmin <= r && dom(c.obj, BANK(j).obj)
-            BANK(j) = c;                           % same niche & Pareto-better -> migrate (upgrade)
-        elseif isLead || dmin > r
-            BANK(end+1) = c;                       % NEW direction, OR a LEAD (a lead is NEVER discarded) %#ok<AGROW>
+        bjLead = ~isempty(objThr) && all(BANK(j).obj <= objThr);   % 该 niche 现有代表是否达标
+        if dmin <= r
+            % v11: 同一 niche 只保留 1 个代表(达标点也去重, 防同质达标灌爆 BANK)。
+            %   优先把代表换成达标点; 同类里 Pareto 更优则换; 否则丢弃 c。
+            if (isLead && ~bjLead) || dom(c.obj, BANK(j).obj)
+                BANK(j) = c;                       % 升级该 niche 代表(达标优先 / Pareto 更优)
+            end
+            % else: 该 niche 已有(达标或更优)代表 -> 丢弃 c (去同质化)
+        else
+            BANK(end+1) = c;                       % 决策空间新方向(>r) -> 加入 %#ok<AGROW>
             if numel(BANK) > K_max
                 BANK = pruneClosest(BANK, objThr);
             end
         end
-        % non-lead within r and not dominating -> discarded (diversity rule; == v7 on LSMOP)
+        % 注: 达标覆盖不丢(每个含达标的 niche 都保留 1 个达标代表); 只是不再重复堆同质达标。
+        % LSMOP(objThr=[]) 时 isLead/bjLead 恒 false -> 行为同 v7 的 niche 规则。
     end
 end
 
