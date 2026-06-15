@@ -1,12 +1,10 @@
 classdef MOL_MOEA_v11_inj < ALGORITHM
-% MOL_MOEA_v11_inj: 在 MOL_MOEA_v10_bank 基础上做两处"提多样性"的改动:
-%   (1) updateBank 达标点也纳入 niche 去重: 每个决策 niche 只留 1 个代表(达标优先),
-%       不再让"同质达标点"无上限灌爆 BANK -> BANK 成为"多样达标档案"(而非少数点的复制堆)。
-%       达标覆盖不丢(每个含达标的 niche 都留 1 个达标代表); niche 粒度由 r_frac 控。
-%   (2) injectOn=1 (L2 开): 每代把 BANK 里"离当前(已塌缩)种群>2×间距"的多样好点注回演化、
-%       替换最拥挤点 -> 抗塌缩。
+% MOL_MOEA_v11_inj: 在 MOL_MOEA_v10_bank 基础上,本轮做两件事(BANK 入库逻辑/半径与 v10_bank 完全一致,便于对标):
+%   (1) 放大 BANK 容量 K_max(默认 200,v10_bank 是 30): 多装一些跨代的多样好点,
+%       尤其保住"早期(种群塌缩前)的多样达标点", 供注入时取用。
+%   (2) injectOn=1 (L2 开): 每代把 BANK 里"离当前(已塌缩)种群>2×间距"的多样好点注回演化、替换最拥挤点 -> 抗塌缩。
 %   目标: 把"唯一达标分子数"从 v10_bank 的 ~8 提向 FRCSO 的 ~13.5。
-%   LSMOP(objThr=[]) 行为不变(达标逻辑不触发, 仍 == v7)。
+%   (注入的"代表性选点"策略可进一步改; 见 injectBank。) LSMOP(objThr=[]) 行为不变(== v7)。
 % MOL_MOEA_v10_bank: v7 controller (UNCHANGED) + POP_BANK (dual-space lead archive).
 %
 %   Built ON v7 (NOT v9). The v7 evolution (controller / env-selection / Pop_Pool)
@@ -62,7 +60,7 @@ classdef MOL_MOEA_v11_inj < ALGORITHM
         function main(Algorithm,Problem)
             %% Parameter setting + SMEA-style SOM grid (v3 fix) + LSTM knobs
             [D,tau0,H,entropyBonus,learnRate,bankOn,mergeOut,injectOn,inject_max,r_frac,K_max,task] = Algorithm.ParameterSet( ...
-                repmat(ceil(Problem.N.^(1/(Problem.M-1))),1,Problem.M-1), 0.7, 5, 0, 0.01, 1, 1, 1, 5, 0.1, 30, 0);   % injectOn=1 (L2 抗塌缩注入开); 其余同 v10_bank
+                repmat(ceil(Problem.N.^(1/(Problem.M-1))),1,Problem.M-1), 0.7, 5, 0, 0.01, 1, 1, 1, 5, 0.1, 200, 0);   % injectOn=1(L2开); K_max=200(放大BANK, v10_bank是30); 其余同 v10_bank
             % task: MOMO application flag. 0 = NONE (default) -> objThr=[] -> output
             %   merge is dominance-only -> LSMOP/smoke == v7. 1/2/3 = MOMO task
             %   thresholds (objectives are obj = -property, so "meet bar" = obj<=objThr):
@@ -439,22 +437,17 @@ function BANK = updateBank(BANK, Cand, r_frac, K_max, objThr)
         d    = sqrt(sum((Bn - cn).^2, 2));         % decision distance to each rep
         r    = r_frac * sqrt(size(Bdec,2));        % niche radius in normalised space
         [dmin, j] = min(d);
-        bjLead = ~isempty(objThr) && all(BANK(j).obj <= objThr);   % 该 niche 现有代表是否达标
-        if dmin <= r
-            % v11: 同一 niche 只保留 1 个代表(达标点也去重, 防同质达标灌爆 BANK)。
-            %   优先把代表换成达标点; 同类里 Pareto 更优则换; 否则丢弃 c。
-            if (isLead && ~bjLead) || dom(c.obj, BANK(j).obj)
-                BANK(j) = c;                       % 升级该 niche 代表(达标优先 / Pareto 更优)
-            end
-            % else: 该 niche 已有(达标或更优)代表 -> 丢弃 c (去同质化)
-        else
-            BANK(end+1) = c;                       % 决策空间新方向(>r) -> 加入 %#ok<AGROW>
+        if dmin <= r && dom(c.obj, BANK(j).obj)
+            BANK(j) = c;                           % same niche & Pareto-better -> migrate (upgrade)
+        elseif isLead || dmin > r
+            BANK(end+1) = c;                       % NEW direction, OR a LEAD (a lead is NEVER discarded) %#ok<AGROW>
             if numel(BANK) > K_max
                 BANK = pruneClosest(BANK, objThr);
             end
         end
-        % 注: 达标覆盖不丢(每个含达标的 niche 都保留 1 个达标代表); 只是不再重复堆同质达标。
-        % LSMOP(objThr=[]) 时 isLead/bjLead 恒 false -> 行为同 v7 的 niche 规则。
+        % non-lead within r and not dominating -> discarded (diversity rule; == v7 on LSMOP)
+        % 注(v11): BANK 入库逻辑保持与 v10_bank 一致(便于对标); 本轮靠"放大 K_max"多装,
+        %   多样性改进放到"注入策略"那一侧, 不动这里的半径/去重。
     end
 end
 

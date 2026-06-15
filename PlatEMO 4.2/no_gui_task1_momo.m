@@ -210,8 +210,9 @@ function start_run(alg, lead_start, lead_end, base_seed, matlab_location, source
         if startsWith(this_alg_name, 'MOL_MOEA')
             inj = double(contains(this_alg_name, '_inj'));   % bank=0 / bank_inj=1 (L2 注入)
             % ParameterSet 顺序：D,tau0,H,entropyBonus,learnRate,bankOn,mergeOut,
-            %                    injectOn,inject_max,r_frac,K_max,task  （D=[] 保留默认）
-            alg_arg = {alg, [],0.7,5,0,0.01, 1,1,inj,5,0.1,30, 1};
+            %                    injectOn,inject_max,r_frac,K_max,task  （[] = 用该算法自己的默认）
+            %   K_max 传 [] -> 各算法用自身默认(v10_bank=30, v11_inj=200), 便于"放大BANK"按版本区分。
+            alg_arg = {alg, [],0.7,5,0,0.01, 1,1,inj,5,0.1,[], 1};
         end
         platemo('algorithm',alg_arg,'problem',@DDProblem1,'maxFE',25000,'save',26);
 
