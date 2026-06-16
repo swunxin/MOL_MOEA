@@ -12,9 +12,11 @@ runs  = [2 48 69 139 191 55 1];
 rows = {};
 for a = 1:numel(algos)
     for rr = runs
-        f = fullfile(scriptDir,'Data',algos{a}, ...
-            sprintf('%s_DDProblem1_M2_D_%d.mat',algos{a},rr));
-        if ~isfile(f); fprintf('缺文件: %s\n', f); continue; end
+        % 真实名: <ALGO>_DDProblem1_M2_D<D>_<run>.mat (D 任意, 尾号=lead号)
+        d = dir(fullfile(scriptDir,'Data',algos{a}, ...
+            sprintf('%s_DDProblem1_M2_D*_%d.mat',algos{a},rr)));
+        if isempty(d); fprintf('缺文件: %s run%d\n', algos{a}, rr); continue; end
+        f = fullfile(d(1).folder, d(1).name);
         S = load(f);
         if ~isfield(S,'result'); fprintf('无 result: %s\n', f); continue; end
         R = S.result;
@@ -31,6 +33,7 @@ for a = 1:numel(algos)
     end
 end
 
+if isempty(rows); error('一个文件都没读到，检查 Data 目录/命名'); end
 T = cell2table(rows,'VariableNames',{'algo','run','qed','sim'});
 out = fullfile(scriptDir,'front_compare.csv');
 writetable(T, out);
