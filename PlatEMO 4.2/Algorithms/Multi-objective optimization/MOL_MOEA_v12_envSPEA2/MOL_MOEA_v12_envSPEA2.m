@@ -176,10 +176,15 @@ classdef MOL_MOEA_v12_envSPEA2 < ALGORITHM
             end
 
             %% Main loop  (evolution drives Population==v7; NotTerminated records OutputPop)
+            % [PROF] 分段计时累加(诊断 v12 慢在哪段; 每25代打印一次, 不改搜索)
+            prof = struct('cal',0,'state',0,'op',0,'bank',0,'sel',0,'tot',0,'nSDE',0,'nSOM',0); profN=0;
             while Algorithm.NotTerminated(OutputPop)
+                tg=tic; tc=tic;
                 Fitness = calFitness(Population.objs);
+                prof.cal = prof.cal + toc(tc);
                 cfg.current_fitness = Fitness;
 
+                tc=tic;
                 progress  = min(max(Problem.FE/Problem.maxFE,0),1);
                 state_raw = State(Population, prev_pi, cfg);
                 w_t       = feature_weights(progress, cfg.feature_mask);
@@ -187,7 +192,9 @@ classdef MOL_MOEA_v12_envSPEA2 < ALGORITHM
                 X_buffer  = [X_buffer, state_t]; %#ok<AGROW>
 
                 [action, pi_vec] = predictLSTMAction(dlnet, X_buffer, temperature, probClip);
+                prof.state = prof.state + toc(tc);
 
+                tc=tic;
                 Population_temp = Population;
 
                 if action == 1
@@ -268,17 +275,24 @@ classdef MOL_MOEA_v12_envSPEA2 < ALGORITHM
 
                 if action == 1
                     Offspring = Operator_SDE(Problem,Population(Loser),Population(Winner));
+                    prof.nSDE = prof.nSDE + 1;
                 else
                     Offspring = Operator_SOM(Problem,Population(Loser),Population(Winner),Population(PeerIdx));
+                    prof.nSOM = prof.nSOM + 1;
                 end
+                prof.op = prof.op + toc(tc);
 
                 %% L0 archive: from the FULL candidate pool, BEFORE env-selection can drop a lead
+                tc=tic;
                 if bankOn
                     BANK = updateBank(BANK, [Population_temp, Offspring], r_frac, K_max, objThr);
                 end
+                prof.bank = prof.bank + toc(tc);
 
                 % v12: 一段式 SPEA2 环境选择直接返回 N (取代 RVEA选择 + Pop_Pool)。
+                tc=tic;
                 Population = EnvironmentalSelection([Population,Offspring], Problem.N);
+                prof.sel = prof.sel + toc(tc);
 
                 %% L2 inject (risky lever, default OFF): refill LOST good directions into evolving pop
                 if bankOn && injectOn
@@ -370,6 +384,17 @@ classdef MOL_MOEA_v12_envSPEA2 < ALGORITHM
                     rewardB_buffer = [];
                     advantages_buffer_A = [];
                     advantages_buffer_B = [];
+                end
+
+                prof.tot = prof.tot + toc(tg);
+                profN = profN + 1;
+                if mod(profN,25) == 0
+                    a = 1000/profN;   % 转成 ms/代 平均
+                    rest = max(0, prof.tot - prof.cal - prof.state - prof.op - prof.bank - prof.sel);
+                    fprintf(['[PROF] g=%d ms/gen: tot=%.0f | cal=%.0f state=%.0f op=%.0f bank=%.0f sel=%.0f rest=%.0f' ...
+                             ' | SDE=%d SOM=%d\n'], profN, prof.tot*a, prof.cal*a, prof.state*a, prof.op*a, ...
+                             prof.bank*a, prof.sel*a, rest*a, prof.nSDE, prof.nSOM);
+                    prof = struct('cal',0,'state',0,'op',0,'bank',0,'sel',0,'tot',0,'nSDE',0,'nSOM',0); profN=0;
                 end
             end
         end
