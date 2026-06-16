@@ -454,23 +454,28 @@ function BANK = updateBank(BANK, Cand, r_frac, K_max, objThr)
         keep = keep | (all(Cand.objs <= objThr, 2))';  % MOLECULAR: also admit EVERY threshold-passing
     end                                                 % lead (even if dominated) so it is preserved
     Cand = Cand(keep);
+    if isempty(Cand); return; end
+    if isempty(BANK)
+        BANK = Cand(1);
+        if numel(Cand) == 1; return; end
+        Cand = Cand(2:end);
+    end
+    Bdec = BANK.decs;                              % [perf] 提取一次, 循环内增量维护
+    r    = r_frac * sqrt(size(Bdec,2));            % niche radius in normalised space
     for i = 1:numel(Cand)
-        c = Cand(i);
+        c = Cand(i);  cdec = c.dec;
         isLead = ~isempty(objThr) && all(c.obj <= objThr);  % threshold-passing molecular lead
-        if isempty(BANK); BANK = c; continue; end
-        Bdec = BANK.decs;  cdec = c.dec;
         allD = [Bdec; cdec];
         lo   = min(allD,[],1);  span = max(max(allD,[],1)-lo, 1e-12);
         Bn   = (Bdec - lo)./span;  cn = (cdec - lo)./span;
         d    = sqrt(sum((Bn - cn).^2, 2));         % decision distance to each rep
-        r    = r_frac * sqrt(size(Bdec,2));        % niche radius in normalised space
         [dmin, j] = min(d);
         if dmin <= r && dom(c.obj, BANK(j).obj)
-            BANK(j) = c;                           % same niche & Pareto-better -> migrate (upgrade)
+            BANK(j) = c;  Bdec(j,:) = cdec;        % same niche & Pareto-better -> migrate (upgrade)
         elseif isLead || dmin > r
-            BANK(end+1) = c;                       % NEW direction, OR a LEAD (a lead is NEVER discarded) %#ok<AGROW>
+            BANK(end+1) = c;  Bdec(end+1,:) = cdec; %#ok<AGROW>  NEW direction or LEAD
             if numel(BANK) > K_max
-                BANK = pruneClosest(BANK, objThr);
+                [BANK, Bdec] = pruneClosest(BANK, Bdec, objThr);
             end
         end
         % non-lead within r and not dominating -> discarded (diversity rule; == v7 on LSMOP)
@@ -481,11 +486,13 @@ function f = dom(a, b)                              % does a dominate b ?
     f = all(a <= b) && any(a < b);
 end
 
-function BANK = pruneClosest(BANK, objThr)
+function [BANK, Bdec] = pruneClosest(BANK, Bdec, objThr)
 % Over K_max: drop the most crowded UNPROTECTED point (decision space). RNG-free.
-% PROTECTION (Option A): threshold-passing leads (all(obj<=objThr)) are never
-% dropped; if every member is protected, BANK is left as-is so leads accumulate
-% beyond K_max. objThr=[] (LSMOP/default) -> no protection (legacy behaviour).
+% PROTECTION: threshold-passing leads (all(obj<=objThr)) are protected UP TO a hard
+% cap LEAD_CAP; 超过 LEAD_CAP 时, 连达标 lead 也按拥挤度淘汰(否则 BANK 无上限膨胀,
+% updateBank 每代越来越慢 —— 2026-06 profiling 实测 bank 段是瓶颈)。输出只要 N 个,
+% LEAD_CAP=100 远超所需, 故不伤 SR。objThr=[] (LSMOP) -> 无保护(原行为)。
+    LEAD_CAP = 100;
     n = numel(BANK);
     if n == 0; return; end
     if ~isempty(objThr)
@@ -493,15 +500,19 @@ function BANK = pruneClosest(BANK, objThr)
     else
         prot = false(n,1);
     end
-    cand = find(~prot);
-    if isempty(cand); return; end                    % all protected -> keep all (accumulate)
-    Bdec = BANK.decs;
+    if n > LEAD_CAP
+        cand = (1:n)';                               % 超硬顶: 全体可淘汰(含 lead)
+    else
+        cand = find(~prot);
+    end
+    if isempty(cand); return; end                    % 未超顶且全保护 -> 保留累积
     lo = min(Bdec,[],1);  span = max(max(Bdec,[],1)-lo, 1e-12);
     Bn = (Bdec - lo)./span;
     Dm = pdist2(Bn, Bn);  Dm(1:n+1:end) = inf;
     nn = min(Dm,[],2);                               % nearest-neighbour distance
     [~,kk] = min(nn(cand));                          % most crowded among droppable
-    BANK(cand(kk)) = [];
+    drop = cand(kk);
+    BANK(drop) = [];  Bdec(drop,:) = [];
 end
 
 function Population = injectBank(Population, BANK, inject_max)
