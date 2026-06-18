@@ -1,0 +1,12 @@
+MOMO Task1 metrics summary
+Generated: 2026-06-18 09:59:56
+DataDir: Data/MOL_MOEA_v14_envSPEA2_inj
+Pattern: MOL_MOEA_v14_envSPEA2_inj_DDProblem1_M2_D*_*.mat
+Thresholds: QED>=0.900, SIM>=0.400 | HV ref=[0.000, 0.000]
+
+SR (final): 181 / 200 (0.905)
+SR (any)  : 181 / 200 (0.905)
+HV (final): mean=0.865237, std=0.030852 (N=200)
+HV (max)  : mean=0.865705, std=0.030981 (N=200)
+
+Per-run CSV: Data/MOL_MOEA_v14_envSPEA2_inj/metrics/task1_metrics_per_run_20260618_095955.csv
