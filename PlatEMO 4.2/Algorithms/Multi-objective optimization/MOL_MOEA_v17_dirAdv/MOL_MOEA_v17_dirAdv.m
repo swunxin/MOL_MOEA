@@ -162,10 +162,11 @@ classdef MOL_MOEA_v17_dirAdv < ALGORITHM
             emaVar_d     = 0;        % ΔdecDiv 的 EMA 二阶矩(方差代理)
             emaInit_d    = false;
 
-            %% v17_dirAdv: 跨动作相对优势(方案Y)的算子质量慢EMA
-            %   q_A/q_B = 各算子"已记录op奖励 reward"的慢EMA(取值位置/op归因一字不动)。
-            %   喂 actor 的优势 = q_taken - q_other (跨动作): magnitude=|qA-qB|=置信门控,
-            %   sign=取的算子是否更好。dirBeta 比 critic alpha=0.2 慢, 避免"自比掉"。
+            %% NEW CRITIC state (relative-advantage A2C): per-operator value EMAs qA, qB.
+            %  q_A/q_B = slow EMA of each operator's reward = an operator value estimate.
+            %  Actor advantage = q_taken - q_other (cross-action): |qA-qB| acts as a
+            %  confidence gate, its sign says which operator is better. dirBeta is slower
+            %  than the old critic's alpha=0.2 so the directional signal is not averaged away.
             qA = 0; qB = 0; qInitA = false; qInitB = false;
             dirBeta  = 0.98;         % 算子质量慢EMA 衰减(越大越慢/越稳)
             advScale = 3;            % 跨动作优势放大(组件4:量级旋钮; 10过冲撞clip->降到3)
@@ -193,19 +194,14 @@ classdef MOL_MOEA_v17_dirAdv < ALGORITHM
             dlnet.Learnables.Value{idxW} = dlarray(zeros(size(dlnet.Learnables.Value{idxW}),'like',dlnet.Learnables.Value{idxW}));
             dlnet.Learnables.Value{idxB} = dlarray(zeros(size(dlnet.Learnables.Value{idxB}),'like',dlnet.Learnables.Value{idxB}));
 
-            %% A2C variables
-            V_old_A = 0;
-            V_old_B = 0;
-            RewardBuffer_A = [];
-            RewardBuffer_B = [];
-
-            rewardA_buffer = [];
-            rewardB_buffer = [];
-            X_buffer = [];
-            actions_buffer = [];
-            rewards_buffer = [];
-            advantages_buffer_A = [];
-            advantages_buffer_B = [];
+            %% Actor training buffers (relative-advantage A2C).
+            %  NOTE: the old per-action self-baseline critic (a_update_critic) and its
+            %  reward windows (V_old_A/B, RewardBuffer_A/B, reward*_buffer) were REMOVED
+            %  as dead code in 2026-06-21 cleanup; they were write-only after dirAdv.
+            X_buffer            = [];   % LSTM input sequence (states), one column per gen
+            actions_buffer      = [];   % chosen operator per gen (1=SDE, 2=SOM)
+            advantages_buffer_A = [];   % cross-action advantage logged when SDE taken
+            advantages_buffer_B = [];   % cross-action advantage logged when SOM taken
 
             trainingGapCounter = 0;
 
@@ -359,19 +355,15 @@ classdef MOL_MOEA_v17_dirAdv < ALGORITHM
                 % v17_dirAdv: 弃用 a_update_critic 的自比TD优势, 改用跨动作相对优势。
                 %   reward(取值/op归因不动)只喂进对应算子的慢EMA; 优势=q_taken-q_other。
                 %   双方都有基线才推(否则A_rel=0, pi留0.5); advScale 控制撬开力度。
-                if action == 1
-                    rewardA_buffer = [rewardA_buffer, reward]; %#ok<AGROW>
-                    rewardB_buffer = [rewardB_buffer, NaN]; %#ok<AGROW>
-
+                % Update the taken operator's value EMA, then form the cross-action
+                % advantage A_rel = q_taken - q_other; the untaken arm logs NaN.
+                if action == 1   % SDE taken
                     if ~qInitA, qA = reward; qInitA = true; else, qA = dirBeta*qA + (1-dirBeta)*reward; end
                     if qInitA && qInitB, A_rel = qA - qB; else, A_rel = 0; end
 
                     advantages_buffer_A = [advantages_buffer_A, advScale*A_rel]; %#ok<AGROW>
                     advantages_buffer_B = [advantages_buffer_B, NaN]; %#ok<AGROW>
-                else
-                    rewardA_buffer = [rewardA_buffer, NaN]; %#ok<AGROW>
-                    rewardB_buffer = [rewardB_buffer, reward]; %#ok<AGROW>
-
+                else             % SOM taken
                     if ~qInitB, qB = reward; qInitB = true; else, qB = dirBeta*qB + (1-dirBeta)*reward; end
                     if qInitA && qInitB, A_rel = qB - qA; else, A_rel = 0; end
 
@@ -380,28 +372,12 @@ classdef MOL_MOEA_v17_dirAdv < ALGORITHM
                 end
 
                 actions_buffer = [actions_buffer, action]; %#ok<AGROW>
-                rewards_buffer = [rewards_buffer, reward]; %#ok<AGROW>
 
                 trainingGapCounter = trainingGapCounter + 1;
 
+                % Train the actor every trainingGap gens: scatter the per-arm advantages
+                % back to a dense [1 x T] vector, then one policy-gradient step.
                 if mod(trainingGapCounter, trainingGap) == 0
-                    if any(~isnan(rewardA_buffer))
-                        r_a_win = mean(rewardA_buffer,'omitnan');
-                        if numel(RewardBuffer_A) >= 5
-                            RewardBuffer_A = [RewardBuffer_A(2:end), r_a_win];
-                        else
-                            RewardBuffer_A = [RewardBuffer_A, r_a_win]; %#ok<AGROW>
-                        end
-                    end
-                    if any(~isnan(rewardB_buffer))
-                        r_b_win = mean(rewardB_buffer,'omitnan');
-                        if numel(RewardBuffer_B) >= 5
-                            RewardBuffer_B = [RewardBuffer_B(2:end), r_b_win];
-                        else
-                            RewardBuffer_B = [RewardBuffer_B, r_b_win]; %#ok<AGROW>
-                        end
-                    end
-
                     T = numel(actions_buffer);
                     advantages_buffer = zeros(1, T, 'like', advantages_buffer_A);
 
@@ -416,9 +392,6 @@ classdef MOL_MOEA_v17_dirAdv < ALGORITHM
 
                     X_buffer = [];
                     actions_buffer = [];
-                    rewards_buffer = [];
-                    rewardA_buffer = [];
-                    rewardB_buffer = [];
                     advantages_buffer_A = [];
                     advantages_buffer_B = [];
                 end
@@ -481,17 +454,6 @@ end
 
 function w = feature_weights(~, mask)
     w = ones(sum(mask), 1);
-end
-function Z = som_grid_points(N)
-    if N <= 0
-        Z = zeros(0,2);
-        return;
-    end
-    cols = ceil(sqrt(N));
-    rows = ceil(N/cols);
-    [X,Y] = meshgrid(linspace(0,1,cols),linspace(0,1,rows));
-    Z = [X(:),Y(:)];
-    Z = Z(1:N,:);
 end
 
 % ===================== POP_BANK (all RNG-free => Stage0/1 evolution == v7) =====================
